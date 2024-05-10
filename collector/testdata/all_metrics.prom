@@ -1,0 +1,135 @@
+# HELP catchpoint_any_error Indicates if any error occurred during the test.
+# TYPE catchpoint_any_error gauge
+catchpoint_any_error{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_cached_count Number of cached elements accessed during the test.
+# TYPE catchpoint_cached_count gauge
+catchpoint_cached_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_client_time Client processing time in milliseconds.
+# TYPE catchpoint_client_time gauge
+catchpoint_client_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 167
+# HELP catchpoint_connect_time Time taken to connect to the URL in milliseconds.
+# TYPE catchpoint_connect_time gauge
+catchpoint_connect_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 11
+# HELP catchpoint_connection_error Indicates if a connection error occurred during the test.
+# TYPE catchpoint_connection_error gauge
+catchpoint_connection_error{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_connections_count Total number of connections made during the test.
+# TYPE catchpoint_connections_count gauge
+catchpoint_connections_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 15
+# HELP catchpoint_content_load_time Time taken to load content in milliseconds.
+# TYPE catchpoint_content_load_time gauge
+catchpoint_content_load_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 6285
+# HELP catchpoint_css_content_type Size of CSS content loaded during the test in bytes.
+# TYPE catchpoint_css_content_type gauge
+catchpoint_css_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 237942
+# HELP catchpoint_css_count Number of CSS documents loaded during the test.
+# TYPE catchpoint_css_count gauge
+catchpoint_css_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 4
+# HELP catchpoint_dns_error Indicates if a DNS error occurred during the test.
+# TYPE catchpoint_dns_error gauge
+catchpoint_dns_error{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_dns_time Time taken to resolve the domain name in milliseconds.
+# TYPE catchpoint_dns_time gauge
+catchpoint_dns_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 24
+# HELP catchpoint_document_complete_time Time taken for the browser to fully render the page after all resources are downloaded in milliseconds.
+# TYPE catchpoint_document_complete_time gauge
+catchpoint_document_complete_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 4406
+# HELP catchpoint_error_objects_loaded Indicates if error objects were loaded during the test.
+# TYPE catchpoint_error_objects_loaded gauge
+catchpoint_error_objects_loaded{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_failed_requests_count Number of failed requests during the test.
+# TYPE catchpoint_failed_requests_count gauge
+catchpoint_failed_requests_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_font_content_type Size of font content loaded during the test in bytes.
+# TYPE catchpoint_font_content_type gauge
+catchpoint_font_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 138677
+# HELP catchpoint_font_count Number of font resources loaded during the test.
+# TYPE catchpoint_font_count gauge
+catchpoint_font_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 4
+# HELP catchpoint_hosts_count Total number of hosts contacted during the test.
+# TYPE catchpoint_hosts_count gauge
+catchpoint_hosts_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 22
+# HELP catchpoint_html_content_type Size of HTML content loaded during the test in bytes.
+# TYPE catchpoint_html_content_type gauge
+catchpoint_html_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 104773
+# HELP catchpoint_html_count Number of HTML documents loaded during the test.
+# TYPE catchpoint_html_count gauge
+catchpoint_html_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 4
+# HELP catchpoint_image_content_type Size of image content loaded during the test in bytes.
+# TYPE catchpoint_image_content_type gauge
+catchpoint_image_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 542482
+# HELP catchpoint_image_count Number of image elements loaded during the test.
+# TYPE catchpoint_image_count gauge
+catchpoint_image_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 11
+# HELP catchpoint_load_error Indicates if a load error occurred during the test.
+# TYPE catchpoint_load_error gauge
+catchpoint_load_error{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_load_time Time taken to load the first and last byte of the primary URL in milliseconds.
+# TYPE catchpoint_load_time gauge
+catchpoint_load_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 598
+# HELP catchpoint_media_content_type Size of media content loaded during the test in bytes.
+# TYPE catchpoint_media_content_type gauge
+catchpoint_media_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 123456
+# HELP catchpoint_media_count Number of media elements loaded during the test.
+# TYPE catchpoint_media_count gauge
+catchpoint_media_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_other_content_type Size of other content loaded during the test in bytes.
+# TYPE catchpoint_other_content_type gauge
+catchpoint_other_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 123456
+# HELP catchpoint_redirect_time Time taken for HTTP redirects in milliseconds.
+# TYPE catchpoint_redirect_time gauge
+catchpoint_redirect_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 309
+# HELP catchpoint_redirections_count Number of HTTP redirections encountered during the test.
+# TYPE catchpoint_redirections_count gauge
+catchpoint_redirections_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 4
+# HELP catchpoint_render_start_time Time taken to start rendering the webpage in milliseconds.
+# TYPE catchpoint_render_start_time gauge
+catchpoint_render_start_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 1554
+# HELP catchpoint_requests_count Number of requests made during the test.
+# TYPE catchpoint_requests_count gauge
+catchpoint_requests_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 59
+# HELP catchpoint_response_content_size Size of the HTTP response content in bytes.
+# TYPE catchpoint_response_content_size gauge
+catchpoint_response_content_size{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 101392
+# HELP catchpoint_response_headers_size Size of the HTTP response headers in bytes.
+# TYPE catchpoint_response_headers_size gauge
+catchpoint_response_headers_size{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 2315
+# HELP catchpoint_script_content_type Size of script content loaded during the test in bytes.
+# TYPE catchpoint_script_content_type gauge
+catchpoint_script_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 593927
+# HELP catchpoint_script_count Number of script elements loaded during the test.
+# TYPE catchpoint_script_count gauge
+catchpoint_script_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 21
+# HELP catchpoint_ssl_time Time taken to establish SSL handshake in milliseconds.
+# TYPE catchpoint_ssl_time gauge
+catchpoint_ssl_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 19
+# HELP catchpoint_timeout_error Indicates if a timeout error occurred during the test.
+# TYPE catchpoint_timeout_error gauge
+catchpoint_timeout_error{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_total_content_size Total size of the HTTP response content and headers in bytes.
+# TYPE catchpoint_total_content_size gauge
+catchpoint_total_content_size{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 1.567691e+06
+# HELP catchpoint_total_headers_size Total size of the HTTP response headers in bytes.
+# TYPE catchpoint_total_headers_size gauge
+catchpoint_total_headers_size{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 54175
+# HELP catchpoint_total_time Total time it took to load the webpage in milliseconds.
+# TYPE catchpoint_total_time gauge
+catchpoint_total_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 6591
+# HELP catchpoint_tracepoints_count Number of tracepoints hit during the test.
+# TYPE catchpoint_tracepoints_count gauge
+catchpoint_tracepoints_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_transaction_error Indicates if a transaction error occurred during the test.
+# TYPE catchpoint_transaction_error gauge
+catchpoint_transaction_error{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
+# HELP catchpoint_up Catchpoint exporter is up and running.
+# TYPE catchpoint_up gauge
+catchpoint_up 1
+# HELP catchpoint_wait_time Time from successful connection to receiving the first byte in milliseconds.
+# TYPE catchpoint_wait_time gauge
+catchpoint_wait_time{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 517
+# HELP catchpoint_xml_content_type Size of XML content loaded during the test in bytes.
+# TYPE catchpoint_xml_content_type gauge
+catchpoint_xml_content_type{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 123456
+# HELP catchpoint_xml_count Number of XML documents loaded during the test.
+# TYPE catchpoint_xml_count gauge
+catchpoint_xml_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0
