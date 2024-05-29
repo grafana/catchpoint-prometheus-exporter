@@ -232,3 +232,104 @@ func TestCollectorWithEmptyResponse(t *testing.T) {
 	// Unregister to clean up after the test
 	registry.Unregister(collector)
 }
+
+func TestCollectorWithPartialData(t *testing.T) {
+	logger := promlog.New(&promlog.Config{})
+	collector := NewCollector(logger, &Config{})
+	registry := prometheus.NewPedanticRegistry()
+	if err := registry.Register(collector); err != nil {
+		t.Fatal("failed to register collector:", err)
+	}
+
+	jsonData := `{
+	    "TestDetails": {
+	        "TestName": "My Homepage",
+	        "TypeId": "0",
+	        "MonitorTypeId": "11",
+	        "TestId": "123456",
+	        "ReportWindow": "123123123210000000",
+	        "NodeId": "12345",
+	        "NodeName": "Bangalore, IN - Tata Teleservices",
+	        "Asn": "12345",
+	        "DivisionId": "1234",
+	        "ClientId": "123"
+	    },
+	    "Summary": {
+	        "Timestamp": "20240502212044798",
+	        "TotalTime": "6591",
+	        "Connect": "11",
+	        "Dns": "",
+	        "ContentLoad": "6285",
+	        "Load": "",
+	        "Redirect": "309",
+	        "SSL": "",
+	        "Wait": "517",
+	        "Client": "",
+	        "DocumentComplete": "",
+	        "RenderStart": "1554",
+	        "ResponseContent": "",
+	        "ResponseHeaders": "2315",
+	        "TotalContent": "",
+	        "TotalHeaders": "",
+	        "AnyError": "False",
+	        "ConnectionError": "False",
+	        "DNSError": "False",
+	        "LoadError": "False",
+	        "TimeoutError": "False",
+	        "TransactionError": "False",
+			"ErrorObjectsLoaded": "False",
+	        "ImageContentType": "",
+	        "ScriptContentType": "",
+	        "HTMLContentType": "",
+	        "CSSContentType": "",
+	        "FontContentType": "",
+	        "MediaContentType": "",
+	        "XMLContentType": "",
+	        "OtherContentType": "",
+	        "ConnectionsCount": "15",
+	        "HostsCount": "22",
+	        "FailedRequestsCount": "0",
+	        "RequestsCount": "59",
+	        "RedirectionsCount": "4",
+	        "CachedCount": "0",
+	        "ImageCount": "11",
+	        "ScriptCount": "21",
+	        "HTMLCount": "4",
+	        "CSSCount": "4",
+	        "FontCount": "4",
+	        "XMLCount": "0",
+	        "MediaCount": "0",
+	        "TracepointsCount": "0"
+	    }
+	}`
+	req := httptest.NewRequest("POST", "http://example.com/webhook", strings.NewReader(jsonData))
+	w := httptest.NewRecorder()
+	collector.HandleWebhook(w, req)
+
+	// Gather all metrics and assert the count
+	metrics, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("gathering metrics failed: %v", err)
+	}
+
+	// Define expected partial metric count
+	expectedMetricCount := 29
+	if len(metrics) != expectedMetricCount {
+		t.Errorf("expected %d metrics, got %d", expectedMetricCount, len(metrics))
+	}
+
+	// Read expected metrics from file
+	expectedFile, err := os.Open(filepath.Join("testdata", "partial_metrics.prom"))
+	if err != nil {
+		t.Fatalf("failed to open expected metrics file: %v", err)
+	}
+	defer expectedFile.Close()
+
+	// Compare gathered metrics against expected metrics
+	if err := testutil.GatherAndCompare(registry, expectedFile); err != nil {
+		t.Errorf("gathered metrics did not match expected metrics: %v", err)
+	}
+
+	// Unregister to clean up after the test
+	registry.Unregister(collector)
+}
