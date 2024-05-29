@@ -34,7 +34,7 @@ func main() {
 
 	var (
 		port        = kingpin.Flag("port", "The port to bind the HTTP server.").Default("9090").Envar("CATCHPOINT_EXPORTER_PORT").String()
-		webhookPath = kingpin.Flag("webhook-path", "The path to receive webhooks.").Default("/webhook").String()
+		webhookPath = kingpin.Flag("webhook-path", "The path to receive webhooks.").Default("/catchpoint-webhook").String()
 		verbose     = kingpin.Flag("verbose", "Enable verbose logging").Default("false").Bool()
 	)
 

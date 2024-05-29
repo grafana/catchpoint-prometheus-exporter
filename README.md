@@ -8,7 +8,7 @@ Catchpoint Prometheus Exporter allows you to integrate Catchpoint's Tests Data W
 The exporter is configurable via command-line flags or environment variables. Here are the key configuration options:
 
 - `--port` or `CATCHPOINT_EXPORTER_PORT`: Sets the port on which the exporter will run (default: `9090`).
-- `--webhook-path` or `CATCHPOINT_WEBHOOK_PATH`: Defines the path where the exporter will receive webhook data from Catchpoint (default: `/webhook`).
+- `--webhook-path` or `CATCHPOINT_WEBHOOK_PATH`: Defines the path where the exporter will receive webhook data from Catchpoint (default: `/catchpoint-webhook`).
 - `--verbose` or `CATCHPOINT_VERBOSE`: Enables verbose logging to provide more detailed output for debugging purposes (default: `false`).
 
 ## Environment Variables
@@ -29,7 +29,7 @@ To receive data from Catchpoint, you need to set up a webhook that points to the
 1. Log in to your Catchpoint account.
 2. Navigate to Settings > API > Test Data Webhooks
 3. Click Add URL
-4. Set the "URL" to `http://<your_exporter_address>:<port>/webhook`, where `<your_exporter_address>` is the IP address or domain of your server where the exporter is running, and `<port>` is configured as per the `CATCHPOINT_EXPORTER_PORT`.
+4. Set the "URL" to `http://<your_exporter_address>:<port>/catchpoint-webhook`, where `<your_exporter_address>` is the IP address or domain of your server where the exporter is running, and `<port>` is configured as per the `CATCHPOINT_EXPORTER_PORT`.
 5. Add a [template](/template.json) json to target the selected metrics used in this Prometheus exporter.
 6. Save the webhook configuration.
 
@@ -48,7 +48,7 @@ To start the exporter, you can use the following command:
 ```bash
 go build -o catchpoint-exporter ./cmd/catchpoint-exporter/main.go
 
-./catchpoint-exporter  --port="9090" --webhook-path="/webhook" --verbose
+./catchpoint-exporter  --port="9090" --webhook-path="/catchpoint-webhook" --verbose
 ```
 
-This command starts the exporter on port 9090, sets up `/webhook` as the endpoint for receiving webhook data, and enables verbose logging.
+This command starts the exporter on port 9090, sets up `/catchpoint-webhook` as the endpoint for receiving webhook data, and enables verbose logging.
