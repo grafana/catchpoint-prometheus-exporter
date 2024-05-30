@@ -48,7 +48,7 @@ To start the exporter, you can use the following command:
 ```bash
 go build -o catchpoint-exporter ./cmd/catchpoint-exporter/main.go
 
-./catchpoint-exporter  --port="9090" --webhook-path="/catchpoint-webhook" --verbose
+./catchpoint-exporter  --port="9090" --webhook-path="/catchpoint-webhook"
 ```
 
 This command starts the exporter on port 9090, sets up `/catchpoint-webhook` as the endpoint for receiving webhook data, and enables verbose logging.
