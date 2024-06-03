@@ -1,0 +1,3 @@
+# HELP catchpoint_up Catchpoint exporter is up and running.
+# TYPE catchpoint_up gauge
+catchpoint_up 1

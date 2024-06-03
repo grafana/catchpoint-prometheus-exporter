@@ -17,6 +17,7 @@
 # build artifacts for mixin
 /mixin/*_out
 mixin/prometheus_alerts.yaml
+catchpoint-exporter
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
