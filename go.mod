@@ -1,4 +1,4 @@
-module catchpoint-prometheus-exporter
+module github.com/grafana/catchpoint-prometheus-exporter
 
 go 1.20
 
