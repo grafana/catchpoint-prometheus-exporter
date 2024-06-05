@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"catchpoint-prometheus-exporter/collector"
+	"github.com/grafana/catchpoint-prometheus-exporter/collector"
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/log/level"
