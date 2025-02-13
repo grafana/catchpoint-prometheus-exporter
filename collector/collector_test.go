@@ -24,11 +24,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/common/promslog"
 )
 
 func TestCollectorWithData(t *testing.T) {
-	logger := promlog.New(&promlog.Config{})
+	logger := promslog.New(&promslog.Config{})
 	collector := NewCollector(logger, &Config{})
 	registry := prometheus.NewPedanticRegistry()
 	if err := registry.Register(collector); err != nil {
@@ -129,7 +129,7 @@ func TestCollectorWithData(t *testing.T) {
 }
 
 func TestCollectorWithEmptyResponse(t *testing.T) {
-	logger := promlog.New(&promlog.Config{})
+	logger := promslog.New(&promslog.Config{})
 	collector := NewCollector(logger, &Config{})
 	registry := prometheus.NewPedanticRegistry()
 	if err := registry.Register(collector); err != nil {
@@ -234,7 +234,7 @@ func TestCollectorWithEmptyResponse(t *testing.T) {
 }
 
 func TestCollectorWithPartialData(t *testing.T) {
-	logger := promlog.New(&promlog.Config{})
+	logger := promslog.New(&promslog.Config{})
 	collector := NewCollector(logger, &Config{})
 	registry := prometheus.NewPedanticRegistry()
 	if err := registry.Register(collector); err != nil {
