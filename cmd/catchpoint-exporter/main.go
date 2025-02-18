@@ -21,15 +21,14 @@ import (
 	"github.com/grafana/catchpoint-prometheus-exporter/collector"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/common/promlog/flag"
+	"github.com/prometheus/common/promslog"
+	"github.com/prometheus/common/promslog/flag"
 )
 
 func main() {
-	promlogConfig := &promlog.Config{}
+	promlogConfig := &promslog.Config{}
 	flag.AddFlags(kingpin.CommandLine, promlogConfig)
 
 	var (
@@ -41,7 +40,7 @@ func main() {
 	kingpin.Version("1.0.0")
 	kingpin.Parse()
 
-	logger := promlog.New(promlogConfig)
+	logger := promslog.New(promlogConfig)
 	cfg := &collector.Config{
 		VerboseLogging: *verbose,
 		Port:           *port,
@@ -59,8 +58,10 @@ func main() {
 		fmt.Fprintf(w, landingPageHtml, "/metrics")
 	})
 
-	level.Info(logger).Log("msg", "Starting Catchpoint Exporter", "port", *port)
-	level.Error(logger).Log("msg", http.ListenAndServe(":"+*port, nil))
+	logger.Info("Starting Catchpoint Exporter", "port", *port)
+	if err := http.ListenAndServe(":"+*port, nil); err != nil {
+		logger.Error("Failed to start HTTP server", "error", err)
+	}
 }
 
 const (

@@ -17,11 +17,12 @@ package collector
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 )
 
 const (
@@ -134,7 +135,7 @@ var (
 
 type Collector struct {
 	latestResponse *Response
-	logger         log.Logger
+	logger         *slog.Logger
 	up             prometheus.Gauge
 	cfg            *Config
 
@@ -184,9 +185,13 @@ type Collector struct {
 	tracepointsCountMetric     *prometheus.Desc
 }
 
-func NewCollector(logger log.Logger, cfg *Config) *Collector {
+func NewCollector(logger *slog.Logger, cfg *Config) *Collector {
+	if logger == nil {
+		logger = promslog.NewNopLogger()
+	}
+
 	if cfg == nil {
-		logger.Log("level", "error", "msg", "Initialization failed", "reason", "nil configuration received")
+		logger.Error("Initialization failed", "reason", "nil configuration received")
 		cfg = NewConfig()
 	}
 
@@ -524,7 +529,7 @@ func (c *Collector) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	var resp Response
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&resp); err != nil {
-		c.logger.Log("level", "error", "msg", "Failed to decode webhook response", "error", err)
+		c.logger.Error("Failed to decode webhook response", "error", err)
 		http.Error(w, fmt.Sprintf("Error decoding response: %v", err), http.StatusBadRequest)
 		c.up.Set(0)
 		return
@@ -532,7 +537,7 @@ func (c *Collector) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	c.up.Set(1)
 	if c.cfg.VerboseLogging {
-		c.logger.Log("level", "info", "msg", "Webhook processed successfully", "testID", resp.TestDetails.TestId)
+		c.logger.Info("Webhook processed successfully", "testID", resp.TestDetails.TestId)
 	}
 
 	c.latestResponse = &resp
@@ -543,14 +548,14 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- c.up
 	if c.latestResponse == nil {
 		if c.cfg.VerboseLogging {
-			c.logger.Log("level", "warn", "msg", "No data available to collect")
+			c.logger.Warn("msg", "No data available to collect")
 		}
 		return
 	}
 
 	resp := c.latestResponse
 	if c.cfg.VerboseLogging {
-		c.logger.Log("level", "debug", "msg", "Collecting metrics", "responseID", resp.TestDetails.TestId)
+		c.logger.Debug("msg", "Collecting metrics", "responseID", resp.TestDetails.TestId)
 	}
 
 	labels := []string{
@@ -614,14 +619,14 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 func (c *Collector) emitMetric(ch chan<- prometheus.Metric, metricDesc *prometheus.Desc, valueStr string, labels []string) {
 	if valueStr == "" {
 		if c.cfg.VerboseLogging {
-			c.logger.Log("level", "debug", "msg", "Skipping metric emission due to empty value", "metric", metricDesc.String())
+			c.logger.Debug("Skipping metric emission due to empty value", "metric", metricDesc.String())
 		}
 		return
 	}
 
 	value, err := parseMetricValue(valueStr)
 	if err != nil {
-		c.logger.Log("level", "error", "msg", "Failed to parse metric value", "metric", metricDesc.String(), "error", err)
+		c.logger.Error("Failed to parse metric value", "metric", metricDesc.String(), "error", err)
 		return
 	}
 
