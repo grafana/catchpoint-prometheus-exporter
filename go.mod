@@ -2,7 +2,7 @@ module github.com/grafana/catchpoint-prometheus-exporter
 
 go 1.21
 
-toolchain go1.23.5
+toolchain go1.25.4
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
