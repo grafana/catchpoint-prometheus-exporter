@@ -24,3 +24,6 @@ catchpoint-exporter
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+# IDE specifics
+.idea/
