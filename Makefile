@@ -14,7 +14,7 @@ build:
 	$(GO) build  -o $(BINARY) $(MAIN)
 
 test:
-	$(GOTEST) ./...
+	$(GOTEST) ./... -v
 
 lint: fmt vet golangci-lint
 
