@@ -548,14 +548,14 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- c.up
 	if c.latestResponse == nil {
 		if c.cfg.VerboseLogging {
-			c.logger.Warn("msg", "No data available to collect")
+			c.logger.Warn("No data available to collect")
 		}
 		return
 	}
 
 	resp := c.latestResponse
 	if c.cfg.VerboseLogging {
-		c.logger.Debug("msg", "Collecting metrics", "responseID", resp.TestDetails.TestId)
+		c.logger.Debug("Collecting metrics", "responseID", resp.TestDetails.TestId)
 	}
 
 	labels := []string{
