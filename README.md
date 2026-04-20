@@ -52,3 +52,4 @@ go build -o catchpoint-exporter ./cmd/catchpoint-exporter/main.go
 ```
 
 This command starts the exporter on port 9090, sets up `/catchpoint-webhook` as the endpoint for receiving webhook data, and enables verbose logging.
+ 
