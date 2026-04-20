@@ -1,4 +1,4 @@
-FROM golang:1.20-alpine@sha256:e47f121850f4e276b2b210c56df3fda9191278dd84a3a442bfe0b09934462a8f AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 COPY . .
@@ -10,3 +10,4 @@ FROM alpine:latest@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990
 COPY --from=builder /app/exporter /exporter
 
 ENTRYPOINT ["/exporter"]
+
