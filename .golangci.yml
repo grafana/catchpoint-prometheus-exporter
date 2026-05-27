@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  enable:
+    - depguard
+    - gosec
+  settings:
+    gosec:
+      severity: medium
+      confidence: medium
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/prometheus/prometheus
+    gofumpt:
+      extra-rules: true
