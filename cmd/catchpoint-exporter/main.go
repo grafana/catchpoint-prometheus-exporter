@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/grafana/catchpoint-prometheus-exporter/collector"
 
@@ -61,7 +62,12 @@ func main() {
 	})
 
 	logger.Info("Starting Catchpoint Exporter", "port", *port)
-	if err := http.ListenAndServe(":"+*port, nil); err != nil {
+	srv := &http.Server{
+		Addr:         ":" + *port,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		logger.Error("Failed to start HTTP server", "error", err)
 	}
 }
