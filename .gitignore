@@ -9,7 +9,7 @@
 *.test
 
 # Build artifact from `make build`
-/snowflake-exporter
+/catchpoint-exporter
 
 # build artifacts from `promu crossbuild`
 .build
