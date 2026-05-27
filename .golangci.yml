@@ -5,6 +5,16 @@ linters:
     - depguard
     - gosec
   settings:
+    depguard:
+      rules:
+        all:
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/grafana/catchpoint-prometheus-exporter
+            - github.com/alecthomas/kingpin/v2
+            - github.com/prometheus/client_golang
+            - github.com/prometheus/common
     gosec:
       severity: medium
       confidence: medium
