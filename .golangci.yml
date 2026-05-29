@@ -26,6 +26,6 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/prometheus/prometheus
+        - github.com/grafana/catchpoint-prometheus-exporter
     gofumpt:
       extra-rules: true
