@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/grafana/catchpoint-prometheus-exporter/collector"
 
@@ -55,11 +56,18 @@ func main() {
 	http.HandleFunc(*webhookPath, collector.HandleWebhook)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, landingPageHtml, "/metrics")
+		if _, err := fmt.Fprintf(w, landingPageHtml, "/metrics"); err != nil {
+			logger.Error("Failed to write landing page response", "error", err)
+		}
 	})
 
 	logger.Info("Starting Catchpoint Exporter", "port", *port)
-	if err := http.ListenAndServe(":"+*port, nil); err != nil {
+	srv := &http.Server{
+		Addr:         ":" + *port,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		logger.Error("Failed to start HTTP server", "error", err)
 	}
 }

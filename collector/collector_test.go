@@ -117,7 +117,7 @@ func TestCollectorWithData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open expected metrics file: %v", err)
 	}
-	defer expectedFile.Close()
+	defer func() { _ = expectedFile.Close() }()
 
 	// Compare gathered metrics against expected metrics
 	if err := testutil.GatherAndCompare(registry, expectedFile); err != nil {
@@ -222,7 +222,7 @@ func TestCollectorWithEmptyResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open expected metrics file: %v", err)
 	}
-	defer expectedFile.Close()
+	defer func() { _ = expectedFile.Close() }()
 
 	// Compare gathered metrics against expected metrics
 	if err := testutil.GatherAndCompare(registry, expectedFile); err != nil {
@@ -323,7 +323,7 @@ func TestCollectorWithPartialData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open expected metrics file: %v", err)
 	}
-	defer expectedFile.Close()
+	defer func() { _ = expectedFile.Close() }()
 
 	// Compare gathered metrics against expected metrics
 	if err := testutil.GatherAndCompare(registry, expectedFile); err != nil {
