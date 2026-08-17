@@ -14,10 +14,19 @@
 
 package collector
 
+import "time"
+
 type Config struct {
 	VerboseLogging bool
 	Port           string
 	WebhookPath    string
+
+	// StaleTimeout is how long a test/node result keeps being exported after its
+	// last webhook. Zero keeps results forever, which means a test that is deleted
+	// or stops reporting will keep exporting its final value indefinitely. Set it
+	// to a few multiples of your slowest test frequency to have those series
+	// disappear instead.
+	StaleTimeout time.Duration
 }
 
 func NewConfig() *Config {
@@ -25,5 +34,6 @@ func NewConfig() *Config {
 		VerboseLogging: false,
 		Port:           "9090",
 		WebhookPath:    "/webhook",
+		StaleTimeout:   0,
 	}
 }

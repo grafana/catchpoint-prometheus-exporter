@@ -10,6 +10,7 @@ The exporter is configurable via command-line flags or environment variables. He
 - `--port` or `CATCHPOINT_EXPORTER_PORT`: Sets the port on which the exporter will run (default: `9090`).
 - `--webhook-path` or `CATCHPOINT_WEBHOOK_PATH`: Defines the path where the exporter will receive webhook data from Catchpoint (default: `/catchpoint-webhook`).
 - `--verbose` or `CATCHPOINT_VERBOSE`: Enables verbose logging to provide more detailed output for debugging purposes (default: `false`).
+- `--stale-timeout` or `CATCHPOINT_STALE_TIMEOUT`: Stops exporting a test/node result this long after its last webhook (default: `0s`, which keeps results forever). See [Staleness](#staleness).
 
 ## Environment Variables
 
@@ -18,10 +19,28 @@ You can also configure the exporter using the following environment variables:
 - `CATCHPOINT_EXPORTER_PORT`: Overrides the default port.
 - `CATCHPOINT_WEBHOOK_PATH`: Overrides the default webhook path.
 - `CATCHPOINT_VERBOSE`: Set to `true` to enable verbose logging.
+- `CATCHPOINT_STALE_TIMEOUT`: Overrides the staleness timeout, e.g. `90m`.
 
 ## Metrics
 
 The exporter provides a range of metrics, reflecting various performance aspects captured by Catchpoint. A complete list of available metrics can be found in the file [/collector/testdata/all_metrics.prom](/collector/testdata/all_metrics.prom).
+
+Catchpoint sends one webhook per test run **per node**, and the exporter keeps the most recent result for every test/node combination it has seen. Each result becomes its own set of series, identified by the `test_id` and `node_id` labels, so a scrape of `/metrics` returns every test from every node — not only whichever one reported last. See [/collector/testdata/multi_series_metrics.prom](/collector/testdata/multi_series_metrics.prom) for what two tests across two nodes look like.
+
+Every test metric carries these labels: `test_id`, `node_id`, `node_name`, `test_name`, `client_id`, `asn`, `division_id`, `monitor_type_id`, `type_id`.
+
+The exporter also reports on itself:
+
+- `catchpoint_up`: always `1` while the exporter is able to serve a scrape.
+- `catchpoint_webhook_requests_total`: webhook requests received.
+- `catchpoint_webhook_errors_total`: webhook requests that could not be processed (wrong method, undecodable body, or a payload with no `TestId`).
+- `catchpoint_tracked_series`: number of test/node combinations currently being exported.
+
+If `catchpoint_tracked_series` stays at `1` while you expect many tests, the webhook template is most likely not sending `TestId`/`NodeId` — check that your template matches [template.json](/template.json), since those two fields are what separate one test's results from another's. Payloads without a `TestId` are rejected with HTTP 400 and counted in `catchpoint_webhook_errors_total`.
+
+## Staleness
+
+By default the exporter keeps the last result of every test/node forever, so a test that is deleted or stops reporting keeps exporting its final value. Set `--stale-timeout` to a few multiples of your slowest test frequency (for example `--stale-timeout=90m` for tests running every 15–30 minutes) to have those series disappear instead. Metric timestamps are always scrape time, not the time of the Catchpoint test run.
 
 ## Webhook Setup
 

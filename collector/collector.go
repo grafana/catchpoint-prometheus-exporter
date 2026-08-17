@@ -20,14 +20,24 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
 
+// maxWebhookBodyBytes caps how much of a webhook body is read, so a malformed or
+// hostile request cannot exhaust the exporter's memory.
+const maxWebhookBodyBytes = 1 << 20 // 1 MiB
+
 const (
 	// Metric names
 	UpMetric                   = "catchpoint_up"
+	WebhookRequestsMetric      = "catchpoint_webhook_requests_total"
+	WebhookErrorsMetric        = "catchpoint_webhook_errors_total"
+	TrackedSeriesMetric        = "catchpoint_tracked_series"
 	TotalTimeMetric            = "catchpoint_total_time"
 	ConnectTimeMetric          = "catchpoint_connect_time"
 	DNSTimeMetric              = "catchpoint_dns_time"
@@ -75,6 +85,9 @@ const (
 
 	// Metric descriptions
 	UpDesc                   = "Catchpoint exporter is up and running."
+	WebhookRequestsDesc      = "Total number of webhook requests received from Catchpoint."
+	WebhookErrorsDesc        = "Total number of webhook requests that could not be processed."
+	TrackedSeriesDesc        = "Number of test/node combinations currently exported."
 	TotalTimeDesc            = "Total time it took to load the webpage in milliseconds."
 	ConnectTimeDesc          = "Time taken to connect to the URL in milliseconds."
 	DNSTimeDesc              = "Time taken to resolve the domain name in milliseconds."
@@ -124,6 +137,7 @@ const (
 // Labels
 var (
 	testIDLabel        = "test_id"
+	nodeIDLabel        = "node_id"
 	nodeNameLabel      = "node_name"
 	testNameLabel      = "test_name"
 	clientIDLabel      = "client_id"
@@ -133,11 +147,56 @@ var (
 	typeIDLabel        = "type_id"
 )
 
+// metricLabels is the label set carried by every Catchpoint metric. Values must be
+// supplied in this order; see (*Collector).emitResponse.
+var metricLabels = []string{
+	testIDLabel,
+	nodeIDLabel,
+	nodeNameLabel,
+	testNameLabel,
+	clientIDLabel,
+	asnLabel,
+	divisionIDLabel,
+	monitorTypeIDLabel,
+	typeIDLabel,
+}
+
+// seriesKey identifies one exported series. Catchpoint delivers one webhook per
+// test run per node, so a test alone is not a unique identity: the same test
+// reports independently from every node it runs on.
+type seriesKey struct {
+	testID string
+	nodeID string
+}
+
+// sample is the most recent payload seen for a seriesKey, plus the time it was
+// received so it can be aged out.
+type sample struct {
+	response   *Response
+	receivedAt time.Time
+}
+
 type Collector struct {
-	latestResponse *Response
-	logger         *slog.Logger
-	up             prometheus.Gauge
-	cfg            *Config
+	// mu guards samples. Webhooks arrive on HTTP handler goroutines while
+	// Collect runs on the scrape goroutine. Collect also evicts, so every holder
+	// takes the write lock.
+	mu      sync.Mutex
+	samples map[seriesKey]sample
+
+	// now is overridable in tests to exercise staleness expiry.
+	now func() time.Time
+
+	// warnMissingNodeID keeps the "template has no nodeid" warning to once per
+	// process rather than once per webhook.
+	warnMissingNodeID sync.Once
+
+	logger          *slog.Logger
+	up              prometheus.Gauge
+	webhookRequests prometheus.Counter
+	webhookErrors   prometheus.Counter
+	cfg             *Config
+
+	trackedSeriesMetric *prometheus.Desc
 
 	totalTimeMetric            *prometheus.Desc
 	connectTimeMetric          *prometheus.Desc
@@ -199,274 +258,292 @@ func NewCollector(logger *slog.Logger, cfg *Config) *Collector {
 		Name: UpMetric,
 		Help: UpDesc,
 	})
-	upMetric.Set(1) // Initially set to 1, indicating "up"
+	// The exporter is up whenever it can serve a scrape. Individual bad payloads
+	// are reported through catchpoint_webhook_errors_total, not by flipping this.
+	upMetric.Set(1)
 
 	return &Collector{
-		logger: logger,
-		cfg:    cfg,
-		up:     upMetric,
+		samples: make(map[seriesKey]sample),
+		now:     time.Now,
+		logger:  logger,
+		cfg:     cfg,
+		up:      upMetric,
+		webhookRequests: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: WebhookRequestsMetric,
+			Help: WebhookRequestsDesc,
+		}),
+		webhookErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: WebhookErrorsMetric,
+			Help: WebhookErrorsDesc,
+		}),
+		trackedSeriesMetric: prometheus.NewDesc(
+			TrackedSeriesMetric,
+			TrackedSeriesDesc,
+			nil,
+			nil,
+		),
 		totalTimeMetric: prometheus.NewDesc(
 			TotalTimeMetric,
 			TotalTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		connectTimeMetric: prometheus.NewDesc(
 			ConnectTimeMetric,
 			ConnectTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		dnsTimeMetric: prometheus.NewDesc(
 			DNSTimeMetric,
 			DNSTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		contentLoadTimeMetric: prometheus.NewDesc(
 			ContentLoadTimeMetric,
 			ContentLoadTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		loadTimeMetric: prometheus.NewDesc(
 			LoadTimeMetric,
 			LoadTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		redirectTimeMetric: prometheus.NewDesc(
 			RedirectTimeMetric,
 			RedirectTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		sslTimeMetric: prometheus.NewDesc(
 			SSLTimeMetric,
 			SSLTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		waitTimeMetric: prometheus.NewDesc(
 			WaitTimeMetric,
 			WaitTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		clientTimeMetric: prometheus.NewDesc(
 			ClientTimeMetric,
 			ClientTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		documentCompleteTimeMetric: prometheus.NewDesc(
 			DocumentCompleteTimeMetric,
 			DocumentCompleteTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		renderStartTimeMetric: prometheus.NewDesc(
 			RenderStartTimeMetric,
 			RenderStartTimeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		responseContentSizeMetric: prometheus.NewDesc(
 			ResponseContentSizeMetric,
 			ResponseContentSizeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		responseHeadersSizeMetric: prometheus.NewDesc(
 			ResponseHeadersSizeMetric,
 			ResponseHeadersSizeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		totalContentSizeMetric: prometheus.NewDesc(
 			TotalContentSizeMetric,
 			TotalContentSizeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		totalHeadersSizeMetric: prometheus.NewDesc(
 			TotalHeadersSizeMetric,
 			TotalHeadersSizeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		anyErrorMetric: prometheus.NewDesc(
 			AnyErrorMetric,
 			AnyErrorDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		connectionErrorMetric: prometheus.NewDesc(
 			ConnectionErrorMetric,
 			ConnectionErrorDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		dnsErrorMetric: prometheus.NewDesc(
 			DNSErrorMetric,
 			DNSErrorDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		loadErrorMetric: prometheus.NewDesc(
 			LoadErrorMetric,
 			LoadErrorDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		timeoutErrorMetric: prometheus.NewDesc(
 			TimeoutErrorMetric,
 			TimeoutErrorDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		transactionErrorMetric: prometheus.NewDesc(
 			TransactionErrorMetric,
 			TransactionErrorDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		errorObjectsLoadedMetric: prometheus.NewDesc(
 			ErrorObjectsLoadedMetric,
 			ErrorObjectsLoadedDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		imageContentTypeMetric: prometheus.NewDesc(
 			ImageContentTypeMetric,
 			ImageContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		scriptContentTypeMetric: prometheus.NewDesc(
 			ScriptContentTypeMetric,
 			ScriptContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		htmlContentTypeMetric: prometheus.NewDesc(
 			HTMLContentTypeMetric,
 			HTMLContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		cssContentTypeMetric: prometheus.NewDesc(
 			CSSContentTypeMetric,
 			CSSContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		fontContentTypeMetric: prometheus.NewDesc(
 			FontContentTypeMetric,
 			FontContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		mediaContentTypeMetric: prometheus.NewDesc(
 			MediaContentTypeMetric,
 			MediaContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		xmlContentTypeMetric: prometheus.NewDesc(
 			XMLContentTypeMetric,
 			XMLContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		otherContentTypeMetric: prometheus.NewDesc(
 			OtherContentTypeMetric,
 			OtherContentTypeDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		connectionsCountMetric: prometheus.NewDesc(
 			ConnectionsCountMetric,
 			ConnectionsCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		hostsCountMetric: prometheus.NewDesc(
 			HostsCountMetric,
 			HostsCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		failedRequestsCountMetric: prometheus.NewDesc(
 			FailedRequestsCountMetric,
 			FailedRequestsCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		requestsCountMetric: prometheus.NewDesc(
 			RequestsCountMetric,
 			RequestsCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		redirectionsCountMetric: prometheus.NewDesc(
 			RedirectionsCountMetric,
 			RedirectionsCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		cachedCountMetric: prometheus.NewDesc(
 			CachedCountMetric,
 			CachedCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		imageCountMetric: prometheus.NewDesc(
 			ImageCountMetric,
 			ImageCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		scriptCountMetric: prometheus.NewDesc(
 			ScriptCountMetric,
 			ScriptCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		htmlCountMetric: prometheus.NewDesc(
 			HTMLCountMetric,
 			HTMLCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		cssCountMetric: prometheus.NewDesc(
 			CSSCountMetric,
 			CSSCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		fontCountMetric: prometheus.NewDesc(
 			FontCountMetric,
 			FontCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		xmlCountMetric: prometheus.NewDesc(
 			XMLCountMetric,
 			XMLCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		mediaCountMetric: prometheus.NewDesc(
 			MediaCountMetric,
 			MediaCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 		tracepointsCountMetric: prometheus.NewDesc(
 			TracepointsCountMetric,
 			TracepointsCountDesc,
-			[]string{testIDLabel, nodeNameLabel, testNameLabel, clientIDLabel, asnLabel, divisionIDLabel, monitorTypeIDLabel, typeIDLabel},
+			metricLabels,
 			nil,
 		),
 	}
@@ -474,6 +551,9 @@ func NewCollector(logger *slog.Logger, cfg *Config) *Collector {
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.up.Desc()
+	ch <- c.webhookRequests.Desc()
+	ch <- c.webhookErrors.Desc()
+	ch <- c.trackedSeriesMetric
 	ch <- c.totalTimeMetric
 	ch <- c.connectTimeMetric
 	ch <- c.dnsTimeMetric
@@ -526,40 +606,112 @@ func (c *Collector) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var resp Response
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&resp); err != nil {
-		c.logger.Error("Failed to decode webhook response", "error", err)
-		http.Error(w, fmt.Sprintf("Error decoding response: %v", err), http.StatusBadRequest)
-		c.up.Set(0)
+	c.webhookRequests.Inc()
+
+	if r.Method != http.MethodPost {
+		c.webhookErrors.Inc()
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "Only POST is supported on the webhook path", http.StatusMethodNotAllowed)
 		return
 	}
 
-	c.up.Set(1)
-	if c.cfg.VerboseLogging {
-		c.logger.Info("Webhook processed successfully", "testID", resp.TestDetails.TestId)
+	var resp Response
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWebhookBodyBytes))
+	if err := decoder.Decode(&resp); err != nil {
+		c.webhookErrors.Inc()
+		c.logger.Error("Failed to decode webhook response", "error", err)
+		http.Error(w, fmt.Sprintf("Error decoding response: %v", err), http.StatusBadRequest)
+		return
 	}
 
-	c.latestResponse = &resp
+	// Without a TestId every payload would collapse onto the same series and each
+	// test would silently overwrite the previous one, so reject it loudly instead.
+	if resp.TestDetails.TestId == "" {
+		c.webhookErrors.Inc()
+		c.logger.Error("Rejecting webhook payload with no TestId",
+			"hint", "the Test Data Webhook template must map TestDetails.TestId to ${testid}")
+		http.Error(w, "payload must set TestDetails.TestId", http.StatusBadRequest)
+		return
+	}
+
+	if resp.TestDetails.NodeId == "" {
+		c.warnMissingNodeID.Do(func() {
+			c.logger.Warn("Webhook payload has no NodeId; results from all nodes of a test will overwrite each other",
+				"testID", resp.TestDetails.TestId,
+				"hint", "the Test Data Webhook template must map TestDetails.NodeId to ${nodeid}")
+		})
+	}
+
+	key := seriesKey{testID: resp.TestDetails.TestId, nodeID: resp.TestDetails.NodeId}
+
+	c.mu.Lock()
+	c.samples[key] = sample{response: &resp, receivedAt: c.now()}
+	tracked := len(c.samples)
+	c.mu.Unlock()
+
+	if c.cfg.VerboseLogging {
+		c.logger.Info("Webhook processed successfully",
+			"testID", key.testID, "nodeID", key.nodeID, "trackedSeries", tracked)
+	}
+
 	w.WriteHeader(http.StatusOK)
+}
+
+// snapshot returns the live samples, evicting any that have aged past the
+// configured stale timeout. A zero timeout disables eviction.
+func (c *Collector) snapshot() []sample {
+	now := c.now()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	live := make([]sample, 0, len(c.samples))
+	for key, s := range c.samples {
+		if c.cfg.StaleTimeout > 0 && now.Sub(s.receivedAt) > c.cfg.StaleTimeout {
+			delete(c.samples, key)
+			if c.cfg.VerboseLogging {
+				c.logger.Debug("Evicting stale series",
+					"testID", key.testID, "nodeID", key.nodeID, "age", now.Sub(s.receivedAt))
+			}
+			continue
+		}
+		live = append(live, s)
+	}
+	return live
 }
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- c.up
-	if c.latestResponse == nil {
+	ch <- c.webhookRequests
+	ch <- c.webhookErrors
+
+	live := c.snapshot()
+	ch <- prometheus.MustNewConstMetric(c.trackedSeriesMetric, prometheus.GaugeValue, float64(len(live)))
+
+	if len(live) == 0 {
 		if c.cfg.VerboseLogging {
 			c.logger.Warn("No data available to collect")
 		}
 		return
 	}
 
-	resp := c.latestResponse
+	// Every test/node combination that has reported is exported, not only the one
+	// that reported most recently.
+	for _, s := range live {
+		c.emitResponse(ch, s.response)
+	}
+}
+
+// emitResponse emits the full metric set for a single test/node result.
+func (c *Collector) emitResponse(ch chan<- prometheus.Metric, resp *Response) {
 	if c.cfg.VerboseLogging {
-		c.logger.Debug("Collecting metrics", "responseID", resp.TestDetails.TestId)
+		c.logger.Debug("Collecting metrics",
+			"testID", resp.TestDetails.TestId, "nodeID", resp.TestDetails.NodeId)
 	}
 
 	labels := []string{
 		resp.TestDetails.TestId,
+		resp.TestDetails.NodeId,
 		resp.TestDetails.NodeName,
 		resp.TestDetails.TestName,
 		resp.TestDetails.ClientId,
@@ -634,10 +786,10 @@ func (c *Collector) emitMetric(ch chan<- prometheus.Metric, metricDesc *promethe
 }
 
 func parseMetricValue(valueStr string) (float64, error) {
-	if valueStr == "False" {
+	if strings.EqualFold(valueStr, "False") {
 		return 0, nil
 	}
-	if valueStr == "True" {
+	if strings.EqualFold(valueStr, "True") {
 		return 1, nil
 	}
 	return strconv.ParseFloat(valueStr, 64)
