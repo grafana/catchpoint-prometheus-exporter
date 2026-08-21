@@ -340,6 +340,38 @@ func TestCollectorKeepsSeriesWhenStaleTimeoutDisabled(t *testing.T) {
 	}
 }
 
+// TestDefaultStaleTimeoutRetiresDeletedTests pins the default retention: a result
+// must survive well past any realistic test frequency, and must not survive
+// forever. The exact window matters to operators, so a change here should be a
+// deliberate one.
+func TestDefaultStaleTimeoutRetiresDeletedTests(t *testing.T) {
+	if DefaultStaleTimeout != 24*time.Hour {
+		t.Errorf("DefaultStaleTimeout = %v, want 24h", DefaultStaleTimeout)
+	}
+	if got := NewConfig().StaleTimeout; got != DefaultStaleTimeout {
+		t.Errorf("NewConfig().StaleTimeout = %v, want %v", got, DefaultStaleTimeout)
+	}
+
+	c, registry := newTestCollector(t, &Config{StaleTimeout: DefaultStaleTimeout})
+
+	clock := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return clock }
+
+	postWebhook(t, c, payloadFor(t, "123456", "1", "Bangalore, IN", "My Homepage", "100"))
+
+	// A long gap in reporting must not drop a live series.
+	clock = clock.Add(12 * time.Hour)
+	if got := singleValue(t, registry, TrackedSeriesMetric); got != 1 {
+		t.Errorf("series dropped after 12h, want it retained; got %v tracked", got)
+	}
+
+	// A deleted test must stop being exported within a day.
+	clock = clock.Add(13 * time.Hour)
+	if got := singleValue(t, registry, TrackedSeriesMetric); got != 0 {
+		t.Errorf("series still exported after 25h, want it evicted; got %v tracked", got)
+	}
+}
+
 func TestCollectorRejectsPayloadWithoutTestID(t *testing.T) {
 	c, registry := newTestCollector(t, &Config{})
 

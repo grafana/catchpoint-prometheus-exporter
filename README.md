@@ -10,7 +10,7 @@ The exporter is configurable via command-line flags or environment variables. He
 - `--port` or `CATCHPOINT_EXPORTER_PORT`: Sets the port on which the exporter will run (default: `9090`).
 - `--webhook-path` or `CATCHPOINT_WEBHOOK_PATH`: Defines the path where the exporter will receive webhook data from Catchpoint (default: `/catchpoint-webhook`).
 - `--verbose` or `CATCHPOINT_VERBOSE`: Enables verbose logging to provide more detailed output for debugging purposes (default: `false`).
-- `--stale-timeout` or `CATCHPOINT_STALE_TIMEOUT`: Stops exporting a test/node result this long after its last webhook (default: `0s`, which keeps results forever). See [Staleness](#staleness).
+- `--stale-timeout` or `CATCHPOINT_STALE_TIMEOUT`: Stops exporting a test/node result this long after its last webhook (default: `24h`; `0s` keeps results forever). See [Staleness](#staleness).
 
 ## Environment Variables
 
@@ -19,7 +19,7 @@ You can also configure the exporter using the following environment variables:
 - `CATCHPOINT_EXPORTER_PORT`: Overrides the default port.
 - `CATCHPOINT_WEBHOOK_PATH`: Overrides the default webhook path.
 - `CATCHPOINT_VERBOSE`: Set to `true` to enable verbose logging.
-- `CATCHPOINT_STALE_TIMEOUT`: Overrides the staleness timeout, e.g. `90m`.
+- `CATCHPOINT_STALE_TIMEOUT`: Overrides the staleness timeout, e.g. `90m`. Defaults to `24h`.
 
 ## Metrics
 
@@ -40,7 +40,13 @@ If `catchpoint_tracked_series` stays at `1` while you expect many tests, the web
 
 ## Staleness
 
-By default the exporter keeps the last result of every test/node forever, so a test that is deleted or stops reporting keeps exporting its final value. Set `--stale-timeout` to a few multiples of your slowest test frequency (for example `--stale-timeout=90m` for tests running every 15–30 minutes) to have those series disappear instead. Metric timestamps are always scrape time, not the time of the Catchpoint test run.
+The exporter keeps the last result of every test/node it has seen and re-exports it on every scrape. Metric timestamps are always scrape time, not the time of the Catchpoint test run, so a result that arrived hours ago is indistinguishable downstream from one that arrived seconds ago — nothing in the exposed data reveals that a test has stopped reporting.
+
+`--stale-timeout` bounds that. A test/node result stops being exported once this long has passed since its last webhook, so a test you delete in Catchpoint disappears from `/metrics` rather than freezing at its final value forever. The default is `24h`: long enough that a run of missed test executions never drops a live series, short enough that deleted tests retire within a day.
+
+Set it lower if you want deleted or broken tests to disappear sooner — a few multiples of your slowest test frequency is the rule of thumb, so `--stale-timeout=90m` suits tests running every 15–30 minutes. **Never set it below your slowest test frequency**, or live series will flap in and out between runs.
+
+`--stale-timeout=0s` disables eviction entirely and restores the pre-`24h` behaviour of keeping every result until the process restarts. The exporter logs a warning at startup when you do. Note that eviction happens during a scrape, so an exporter that receives webhooks while nothing scrapes `/metrics` accumulates results regardless of this setting.
 
 ## Webhook Setup
 

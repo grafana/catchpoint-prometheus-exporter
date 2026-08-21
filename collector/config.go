@@ -22,18 +22,25 @@ type Config struct {
 	WebhookPath    string
 
 	// StaleTimeout is how long a test/node result keeps being exported after its
-	// last webhook. Zero keeps results forever, which means a test that is deleted
-	// or stops reporting will keep exporting its final value indefinitely. Set it
-	// to a few multiples of your slowest test frequency to have those series
-	// disappear instead.
+	// last webhook. It should be a few multiples of the slowest test frequency, so
+	// that a couple of missed runs do not drop a live series but a deleted test
+	// stops being exported within a day. Zero disables eviction, which means a test
+	// that is deleted or stops reporting keeps exporting its final value
+	// indefinitely; metric timestamps are scrape time, so nothing downstream can
+	// tell that value is stale.
 	StaleTimeout time.Duration
 }
+
+// DefaultStaleTimeout is the retention applied when --stale-timeout is not set.
+// It is deliberately far longer than any realistic test frequency: its job is to
+// retire deleted tests, not to detect gaps in reporting.
+const DefaultStaleTimeout = 24 * time.Hour
 
 func NewConfig() *Config {
 	return &Config{
 		VerboseLogging: false,
 		Port:           "9090",
 		WebhookPath:    "/webhook",
-		StaleTimeout:   0,
+		StaleTimeout:   DefaultStaleTimeout,
 	}
 }

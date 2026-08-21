@@ -39,8 +39,8 @@ func main() {
 		webhookPath  = kingpin.Flag("webhook-path", "The path to receive webhooks.").Default("/catchpoint-webhook").Envar("CATCHPOINT_WEBHOOK_PATH").String()
 		verbose      = kingpin.Flag("verbose", "Enable verbose logging").Default("false").Envar("CATCHPOINT_VERBOSE").Bool()
 		staleTimeout = kingpin.Flag("stale-timeout",
-			"Stop exporting a test/node result this long after its last webhook. 0 keeps results forever.").
-			Default("0s").Envar("CATCHPOINT_STALE_TIMEOUT").Duration()
+			"Stop exporting a test/node result this long after its last webhook. Must exceed your slowest test frequency. 0 keeps results forever.").
+			Default(collector.DefaultStaleTimeout.String()).Envar("CATCHPOINT_STALE_TIMEOUT").Duration()
 	)
 
 	kingpin.Version("1.0.0")
@@ -70,6 +70,10 @@ func main() {
 
 	logger.Info("Starting Catchpoint Exporter",
 		"port", *port, "webhookPath", *webhookPath, "staleTimeout", *staleTimeout)
+	if *staleTimeout == 0 {
+		logger.Warn("Stale eviction is disabled; deleted tests will keep exporting their last value until restart",
+			"hint", "set --stale-timeout to a few multiples of your slowest test frequency")
+	}
 	srv := &http.Server{
 		Addr:         ":" + *port,
 		Handler:      mux,
