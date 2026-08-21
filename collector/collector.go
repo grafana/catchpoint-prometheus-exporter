@@ -28,15 +28,16 @@ import (
 	"github.com/prometheus/common/promslog"
 )
 
-// maxWebhookBodyBytes caps how much of a webhook body is read, so a malformed or
-// hostile request cannot exhaust the exporter's memory.
-const maxWebhookBodyBytes = 1 << 20 // 1 MiB
+// DefaultMaxBodyBytes caps how much of a webhook body is read, so a malformed
+// request cannot exhaust the exporter's memory. Override with Config.MaxBodyBytes.
+const DefaultMaxBodyBytes = 1 << 20 // 1 MiB
 
 const (
 	// Metric names
 	UpMetric                   = "catchpoint_up"
 	WebhookRequestsMetric      = "catchpoint_webhook_requests_total"
 	WebhookErrorsMetric        = "catchpoint_webhook_errors_total"
+	SeriesDroppedMetric        = "catchpoint_series_dropped_total"
 	TrackedSeriesMetric        = "catchpoint_tracked_series"
 	TotalTimeMetric            = "catchpoint_total_time"
 	ConnectTimeMetric          = "catchpoint_connect_time"
@@ -87,6 +88,7 @@ const (
 	UpDesc                   = "Catchpoint exporter is up and running."
 	WebhookRequestsDesc      = "Total number of webhook requests received from Catchpoint."
 	WebhookErrorsDesc        = "Total number of webhook requests that could not be processed."
+	SeriesDroppedDesc        = "Total number of results dropped after reaching the series limit."
 	TrackedSeriesDesc        = "Number of test/node combinations currently exported."
 	TotalTimeDesc            = "Total time it took to load the webpage in milliseconds."
 	ConnectTimeDesc          = "Time taken to connect to the URL in milliseconds."
@@ -194,7 +196,18 @@ type Collector struct {
 	up              prometheus.Gauge
 	webhookRequests prometheus.Counter
 	webhookErrors   prometheus.Counter
+	seriesDropped   prometheus.Counter
 	cfg             *Config
+
+	// maxBodyBytes is Config.MaxBodyBytes resolved against DefaultMaxBodyBytes.
+	maxBodyBytes int64
+
+	// maxSeries is Config.MaxSeries resolved against DefaultMaxSeries. Zero means
+	// the limit is disabled.
+	maxSeries int
+
+	// warnSeriesCap keeps the "series limit reached" error to once per process.
+	warnSeriesCap sync.Once
 
 	trackedSeriesMetric *prometheus.Desc
 
@@ -258,16 +271,30 @@ func NewCollector(logger *slog.Logger, cfg *Config) *Collector {
 		Name: UpMetric,
 		Help: UpDesc,
 	})
-	// The exporter is up whenever it can serve a scrape. Individual bad payloads
-	// are reported through catchpoint_webhook_errors_total, not by flipping this.
-	upMetric.Set(1)
+
+	upMetric.Set(1) // Initially set to 1, indicating "up".
+
+	maxBodyBytes := cfg.MaxBodyBytes
+	if maxBodyBytes <= 0 {
+		maxBodyBytes = DefaultMaxBodyBytes
+	}
+
+	maxSeries := cfg.MaxSeries
+	switch {
+	case maxSeries == 0:
+		maxSeries = DefaultMaxSeries
+	case maxSeries < 0:
+		maxSeries = 0 // Explicitly uncapped.
+	}
 
 	return &Collector{
-		samples: make(map[seriesKey]sample),
-		now:     time.Now,
-		logger:  logger,
-		cfg:     cfg,
-		up:      upMetric,
+		samples:      make(map[seriesKey]sample),
+		now:          time.Now,
+		logger:       logger,
+		cfg:          cfg,
+		maxBodyBytes: maxBodyBytes,
+		maxSeries:    maxSeries,
+		up:           upMetric,
 		webhookRequests: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: WebhookRequestsMetric,
 			Help: WebhookRequestsDesc,
@@ -275,6 +302,10 @@ func NewCollector(logger *slog.Logger, cfg *Config) *Collector {
 		webhookErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: WebhookErrorsMetric,
 			Help: WebhookErrorsDesc,
+		}),
+		seriesDropped: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: SeriesDroppedMetric,
+			Help: SeriesDroppedDesc,
 		}),
 		trackedSeriesMetric: prometheus.NewDesc(
 			TrackedSeriesMetric,
@@ -553,6 +584,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.up.Desc()
 	ch <- c.webhookRequests.Desc()
 	ch <- c.webhookErrors.Desc()
+	ch <- c.seriesDropped.Desc()
 	ch <- c.trackedSeriesMetric
 	ch <- c.totalTimeMetric
 	ch <- c.connectTimeMetric
@@ -616,13 +648,16 @@ func (c *Collector) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var resp Response
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWebhookBodyBytes))
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, c.maxBodyBytes))
 	if err := decoder.Decode(&resp); err != nil {
 		c.webhookErrors.Inc()
+		c.up.Set(0)
 		c.logger.Error("Failed to decode webhook response", "error", err)
 		http.Error(w, fmt.Sprintf("Error decoding response: %v", err), http.StatusBadRequest)
 		return
 	}
+
+	c.up.Set(1)
 
 	// Without a TestId every payload would collapse onto the same series and each
 	// test would silently overwrite the previous one, so reject it loudly instead.
@@ -645,9 +680,27 @@ func (c *Collector) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	key := seriesKey{testID: resp.TestDetails.TestId, nodeID: resp.TestDetails.NodeId}
 
 	c.mu.Lock()
-	c.samples[key] = sample{response: &resp, receivedAt: c.now()}
+	_, known := c.samples[key]
+	atCap := c.maxSeries > 0 && !known && len(c.samples) >= c.maxSeries
+	if !atCap {
+		c.samples[key] = sample{response: &resp, receivedAt: c.now()}
+	}
 	tracked := len(c.samples)
 	c.mu.Unlock()
+
+	// Only unseen combinations are dropped, so the limit bounds memory without
+	// blinding the tests already being exported.
+	if atCap {
+		c.webhookErrors.Inc()
+		c.seriesDropped.Inc()
+		c.warnSeriesCap.Do(func() {
+			c.logger.Error("Series limit reached; results for new test/node combinations are being dropped",
+				"maxSeries", c.maxSeries, "testID", key.testID, "nodeID", key.nodeID,
+				"hint", "raise --max-series, or lower --stale-timeout to evict retired tests sooner")
+		})
+		http.Error(w, "series limit reached", http.StatusServiceUnavailable)
+		return
+	}
 
 	if c.cfg.VerboseLogging {
 		c.logger.Info("Webhook processed successfully",
@@ -684,6 +737,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- c.up
 	ch <- c.webhookRequests
 	ch <- c.webhookErrors
+	ch <- c.seriesDropped
 
 	live := c.snapshot()
 	ch <- prometheus.MustNewConstMetric(c.trackedSeriesMetric, prometheus.GaugeValue, float64(len(live)))

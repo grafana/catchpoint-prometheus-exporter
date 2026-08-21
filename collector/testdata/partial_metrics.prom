@@ -64,6 +64,9 @@ catchpoint_response_headers_size{asn="12345",client_id="123",division_id="1234",
 # HELP catchpoint_script_count Number of script elements loaded during the test.
 # TYPE catchpoint_script_count gauge
 catchpoint_script_count{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_id="12345",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 21
+# HELP catchpoint_series_dropped_total Total number of results dropped after reaching the series limit.
+# TYPE catchpoint_series_dropped_total counter
+catchpoint_series_dropped_total 0
 # HELP catchpoint_timeout_error Indicates if a timeout error occurred during the test.
 # TYPE catchpoint_timeout_error gauge
 catchpoint_timeout_error{asn="12345",client_id="123",division_id="1234",monitor_type_id="11",node_id="12345",node_name="Bangalore, IN - Tata Teleservices",test_id="123456",test_name="My Homepage",type_id="0"} 0

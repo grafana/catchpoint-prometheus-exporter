@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,10 +38,14 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files under testdata")
 
+// goldenFS scopes golden-file reads to testdata, so the read path cannot escape
+// that directory. This is what keeps gosec's G304 quiet without a nolint.
+var goldenFS = os.DirFS("testdata")
+
 // alwaysOnMetricCount is the number of metric families the exporter reports even
-// with no test data: catchpoint_up, the two webhook counters and
-// catchpoint_tracked_series.
-const alwaysOnMetricCount = 4
+// with no test data: catchpoint_up, the two webhook counters,
+// catchpoint_series_dropped_total and catchpoint_tracked_series.
+const alwaysOnMetricCount = 5
 
 func newTestCollector(t *testing.T, cfg *Config) (*Collector, *prometheus.Registry) {
 	t.Helper()
@@ -122,13 +127,12 @@ func compareGolden(t *testing.T, c *Collector, g prometheus.Gatherer, name strin
 		return
 	}
 
-	expectedFile, err := os.Open(path)
+	expected, err := fs.ReadFile(goldenFS, name)
 	if err != nil {
-		t.Fatalf("failed to open expected metrics file: %v", err)
+		t.Fatalf("failed to read expected metrics file: %v", err)
 	}
-	defer func() { _ = expectedFile.Close() }()
 
-	if err := testutil.CollectAndCompare(c, expectedFile); err != nil {
+	if err := testutil.CollectAndCompare(c, bytes.NewReader(expected)); err != nil {
 		t.Errorf("gathered metrics did not match expected metrics: %v", err)
 	}
 }
@@ -406,36 +410,137 @@ func TestCollectorRejectsNonPOST(t *testing.T) {
 	}
 }
 
-// TestCollectorStaysUpAfterBadPayload guards the exporter against reporting
-// itself down for the rest of its life because one payload failed to decode.
-func TestCollectorStaysUpAfterBadPayload(t *testing.T) {
+// TestCollectorGoesDownOnBadPayloadAndRecovers covers the point of the up gauge:
+// a template the exporter cannot ingest has to show as down, and fixing it has to
+// show as up again without a restart.
+func TestCollectorGoesDownOnBadPayloadAndRecovers(t *testing.T) {
 	c, registry := newTestCollector(t, &Config{})
+
+	if got := singleValue(t, registry, UpMetric); got != 1 {
+		t.Errorf("expected %s to be 1 before any webhook, got %v", UpMetric, got)
+	}
 
 	if got := postWebhook(t, c, `{"TestDetails":`).Code; got != http.StatusBadRequest {
 		t.Errorf("expected status 400 for malformed JSON, got %d", got)
 	}
 
-	if got := singleValue(t, registry, UpMetric); got != 1 {
-		t.Errorf("expected %s to stay 1 after a bad payload, got %v", UpMetric, got)
+	if got := singleValue(t, registry, UpMetric); got != 0 {
+		t.Errorf("expected %s to be 0 after a bad payload, got %v", UpMetric, got)
 	}
 	if got := singleValue(t, registry, WebhookErrorsMetric); got != 1 {
 		t.Errorf("expected 1 webhook error, got %v", got)
 	}
 
-	// A good payload after a bad one is still exported.
+	// A good payload after a bad one is exported, and clears the down state.
 	postWebhook(t, c, payloadFor(t, "123456", "1", "Bangalore, IN", "My Homepage", "100"))
 	if got := singleValue(t, registry, TrackedSeriesMetric); got != 1 {
 		t.Errorf("expected 1 tracked series, got %v", got)
+	}
+	if got := singleValue(t, registry, UpMetric); got != 1 {
+		t.Errorf("expected %s to return to 1 after a good payload, got %v", UpMetric, got)
+	}
+}
+
+// TestCollectorEnforcesSeriesLimit covers the memory bound: once the limit is
+// reached, tests already being exported keep updating but unseen ones are
+// dropped rather than growing the map without limit.
+func TestCollectorEnforcesSeriesLimit(t *testing.T) {
+	c, registry := newTestCollector(t, &Config{MaxSeries: 2})
+
+	postWebhook(t, c, payloadFor(t, "1", "1", "Bangalore, IN", "First", "100"))
+	postWebhook(t, c, payloadFor(t, "2", "1", "Sydney, AU", "Second", "200"))
+
+	if got := postWebhook(t, c, payloadFor(t, "3", "1", "Perth, AU", "Third", "300")).Code; got != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503 once the series limit is reached, got %d", got)
+	}
+	if got := singleValue(t, registry, TrackedSeriesMetric); got != 2 {
+		t.Errorf("expected the series limit to hold tracked series at 2, got %v", got)
+	}
+	if got := singleValue(t, registry, SeriesDroppedMetric); got != 1 {
+		t.Errorf("expected 1 dropped series, got %v", got)
+	}
+
+	// A series already tracked keeps updating at the limit.
+	postWebhook(t, c, payloadFor(t, "1", "1", "Bangalore, IN", "First", "999"))
+	if got := singleValue(t, registry, TrackedSeriesMetric); got != 2 {
+		t.Errorf("expected tracked series to stay at 2, got %v", got)
+	}
+	if got := singleValue(t, registry, SeriesDroppedMetric); got != 1 {
+		t.Errorf("expected no further drops, got %v", got)
+	}
+}
+
+// TestCollectorAppliesDefaultSeriesLimit checks that a zero-valued Config picks up
+// the default rather than silently running uncapped.
+func TestCollectorAppliesDefaultSeriesLimit(t *testing.T) {
+	c, _ := newTestCollector(t, &Config{})
+	if c.maxSeries != DefaultMaxSeries {
+		t.Errorf("expected the default series limit of %d, got %d", DefaultMaxSeries, c.maxSeries)
+	}
+}
+
+// TestCollectorSeriesLimitDisabled checks that a negative limit is honoured as
+// "unlimited" rather than falling back to the default.
+func TestCollectorSeriesLimitDisabled(t *testing.T) {
+	c, registry := newTestCollector(t, &Config{MaxSeries: -1})
+
+	for _, id := range []string{"1", "2", "3", "4"} {
+		if got := postWebhook(t, c, payloadFor(t, id, "1", "Bangalore, IN", "Test", "100")).Code; got != http.StatusOK {
+			t.Fatalf("expected status 200 with the limit disabled, got %d", got)
+		}
+	}
+
+	if got := singleValue(t, registry, TrackedSeriesMetric); got != 4 {
+		t.Errorf("expected 4 tracked series with the limit disabled, got %v", got)
+	}
+	if got := singleValue(t, registry, SeriesDroppedMetric); got != 0 {
+		t.Errorf("expected no dropped series with the limit disabled, got %v", got)
 	}
 }
 
 func TestCollectorRejectsOversizedBody(t *testing.T) {
 	c, _ := newTestCollector(t, &Config{})
 
-	body := `{"TestDetails":{"TestName":"` + strings.Repeat("a", maxWebhookBodyBytes+1) + `"}}`
+	body := `{"TestDetails":{"TestName":"` + strings.Repeat("a", DefaultMaxBodyBytes+1) + `"}}`
 	if got := postWebhook(t, c, body).Code; got != http.StatusBadRequest {
 		t.Errorf("expected status 400 for an oversized body, got %d", got)
 	}
+}
+
+// TestCollectorHonoursConfiguredBodyLimit checks that MaxBodyBytes overrides the
+// default in both directions, and that an unset value falls back to the default.
+func TestCollectorHonoursConfiguredBodyLimit(t *testing.T) {
+	padded := func(n int) string {
+		return `{"TestDetails":{"TestId":"1","TestName":"` + strings.Repeat("a", n) + `"}}`
+	}
+
+	t.Run("below the configured limit", func(t *testing.T) {
+		c, _ := newTestCollector(t, &Config{MaxBodyBytes: 4096})
+		if got := postWebhook(t, c, padded(1024)).Code; got != http.StatusOK {
+			t.Errorf("expected status 200, got %d", got)
+		}
+	})
+
+	t.Run("above the configured limit", func(t *testing.T) {
+		c, _ := newTestCollector(t, &Config{MaxBodyBytes: 4096})
+		if got := postWebhook(t, c, padded(8192)).Code; got != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", got)
+		}
+	})
+
+	t.Run("a body the default would reject", func(t *testing.T) {
+		c, _ := newTestCollector(t, &Config{MaxBodyBytes: 4 * DefaultMaxBodyBytes})
+		if got := postWebhook(t, c, padded(DefaultMaxBodyBytes+1)).Code; got != http.StatusOK {
+			t.Errorf("expected status 200, got %d", got)
+		}
+	})
+
+	t.Run("unset falls back to the default", func(t *testing.T) {
+		c, _ := newTestCollector(t, &Config{})
+		if got := c.maxBodyBytes; got != DefaultMaxBodyBytes {
+			t.Errorf("maxBodyBytes = %d, want %d", got, DefaultMaxBodyBytes)
+		}
+	})
 }
 
 // TestCollectorConcurrentWebhooksAndScrapes exercises the lock between the HTTP

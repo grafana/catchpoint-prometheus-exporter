@@ -22,18 +22,27 @@ type Config struct {
 	WebhookPath    string
 
 	// StaleTimeout is how long a test/node result keeps being exported after its
-	// last webhook. It should be a few multiples of the slowest test frequency, so
-	// that a couple of missed runs do not drop a live series but a deleted test
-	// stops being exported within a day. Zero disables eviction, which means a test
-	// that is deleted or stops reporting keeps exporting its final value
-	// indefinitely; metric timestamps are scrape time, so nothing downstream can
-	// tell that value is stale.
+	// last webhook. Set it to a few multiples of the slowest test frequency, so a
+	// couple of missed runs do not drop a live series. Zero disables eviction,
+	// leaving deleted tests exporting their final value indefinitely.
 	StaleTimeout time.Duration
+
+	// MaxBodyBytes caps how much of a webhook body is read. Zero or less selects
+	// DefaultMaxBodyBytes.
+	MaxBodyBytes int64
+
+	// MaxSeries caps how many test/node combinations are held at once. Combinations
+	// already tracked keep updating; new ones are rejected. Zero selects
+	// DefaultMaxSeries, a negative value disables the limit.
+	MaxSeries int
 }
 
-// DefaultStaleTimeout is the retention applied when --stale-timeout is not set.
-// It is deliberately far longer than any realistic test frequency: its job is to
-// retire deleted tests, not to detect gaps in reporting.
+// DefaultMaxSeries is far above any realistic Catchpoint account, so reaching it
+// means something is wrong rather than that the deployment has outgrown it.
+const DefaultMaxSeries = 10000
+
+// DefaultStaleTimeout is deliberately far longer than any realistic test
+// frequency: its job is to retire deleted tests, not to detect gaps in reporting.
 const DefaultStaleTimeout = 24 * time.Hour
 
 func NewConfig() *Config {
@@ -42,5 +51,7 @@ func NewConfig() *Config {
 		Port:           "9090",
 		WebhookPath:    "/webhook",
 		StaleTimeout:   DefaultStaleTimeout,
+		MaxBodyBytes:   DefaultMaxBodyBytes,
+		MaxSeries:      DefaultMaxSeries,
 	}
 }

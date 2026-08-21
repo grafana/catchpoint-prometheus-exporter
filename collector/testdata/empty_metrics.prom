@@ -1,3 +1,6 @@
+# HELP catchpoint_series_dropped_total Total number of results dropped after reaching the series limit.
+# TYPE catchpoint_series_dropped_total counter
+catchpoint_series_dropped_total 0
 # HELP catchpoint_tracked_series Number of test/node combinations currently exported.
 # TYPE catchpoint_tracked_series gauge
 catchpoint_tracked_series 1

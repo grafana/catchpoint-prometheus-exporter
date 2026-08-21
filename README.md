@@ -10,7 +10,9 @@ The exporter is configurable via command-line flags or environment variables. He
 - `--port` or `CATCHPOINT_EXPORTER_PORT`: Sets the port on which the exporter will run (default: `9090`).
 - `--webhook-path` or `CATCHPOINT_WEBHOOK_PATH`: Defines the path where the exporter will receive webhook data from Catchpoint (default: `/catchpoint-webhook`).
 - `--verbose` or `CATCHPOINT_VERBOSE`: Enables verbose logging to provide more detailed output for debugging purposes (default: `false`).
-- `--stale-timeout` or `CATCHPOINT_STALE_TIMEOUT`: Stops exporting a test/node result this long after its last webhook (default: `24h`; `0s` keeps results forever). See [Staleness](#staleness).
+- `--stale-timeout` or `CATCHPOINT_STALE_TIMEOUT`: How long a test/node result is kept after its last webhook (default: `24h`; `0s` keeps them forever). See [Staleness](#staleness).
+- `--max-body-bytes` or `CATCHPOINT_MAX_BODY_BYTES`: Largest webhook body accepted, in bytes (default: `1048576`).
+- `--max-series` or `CATCHPOINT_MAX_SERIES`: Maximum number of test/node combinations kept (default: `10000`; a negative value disables the limit). See [Series limit](#series-limit).
 
 ## Environment Variables
 
@@ -19,7 +21,9 @@ You can also configure the exporter using the following environment variables:
 - `CATCHPOINT_EXPORTER_PORT`: Overrides the default port.
 - `CATCHPOINT_WEBHOOK_PATH`: Overrides the default webhook path.
 - `CATCHPOINT_VERBOSE`: Set to `true` to enable verbose logging.
-- `CATCHPOINT_STALE_TIMEOUT`: Overrides the staleness timeout, e.g. `90m`. Defaults to `24h`.
+- `CATCHPOINT_STALE_TIMEOUT`: Overrides the staleness timeout, e.g. `90m`.
+- `CATCHPOINT_MAX_BODY_BYTES`: Overrides the maximum webhook body size.
+- `CATCHPOINT_MAX_SERIES`: Overrides the maximum number of test/node combinations.
 
 ## Metrics
 
@@ -31,22 +35,34 @@ Every test metric carries these labels: `test_id`, `node_id`, `node_name`, `test
 
 The exporter also reports on itself:
 
-- `catchpoint_up`: always `1` while the exporter is able to serve a scrape.
+- `catchpoint_up`: `1` while the exporter is running; `0` if the last webhook body could not be decoded, until one decodes again.
 - `catchpoint_webhook_requests_total`: webhook requests received.
-- `catchpoint_webhook_errors_total`: webhook requests that could not be processed (wrong method, undecodable body, or a payload with no `TestId`).
+- `catchpoint_webhook_errors_total`: webhook requests that could not be processed (wrong method, undecodable body, a payload with no `TestId`, or the series limit being reached).
+- `catchpoint_series_dropped_total`: results dropped after reaching the series limit. See [Series limit](#series-limit).
 - `catchpoint_tracked_series`: number of test/node combinations currently being exported.
 
-If `catchpoint_tracked_series` stays at `1` while you expect many tests, the webhook template is most likely not sending `TestId`/`NodeId` — check that your template matches [template.json](/template.json), since those two fields are what separate one test's results from another's. Payloads without a `TestId` are rejected with HTTP 400 and counted in `catchpoint_webhook_errors_total`.
+Compare `catchpoint_tracked_series` against what you expect, using [template.json](/template.json) as the reference:
+
+- Stuck at `0` while `catchpoint_webhook_requests_total` climbs: the template is not sending `TestId`. Those payloads are rejected with HTTP 400 and counted in `catchpoint_webhook_errors_total`.
+- Equal to your number of tests, rather than tests × nodes: the template is not sending `NodeId`, so every node of a test collapses onto one series and overwrites the others.
+
+## Series limit
+
+The exporter keeps one entry per test/node combination it has seen, so an unsupervised deployment grows with whatever Catchpoint sends it. `--max-series` bounds that.
+
+At the limit, combinations already tracked keep updating; only unseen ones are rejected, with HTTP 503 and a bump to `catchpoint_series_dropped_total`. Existing tests keep reporting rather than the exporter going blind all at once.
+
+The default of `10000` is far above any realistic Catchpoint account, so reaching it usually means something is wrong — a template sending unexpected `TestId` values, or `--stale-timeout=0s` letting retired tests accumulate. A negative value disables the limit and logs a warning at startup.
 
 ## Staleness
 
-The exporter keeps the last result of every test/node it has seen and re-exports it on every scrape. Metric timestamps are always scrape time, not the time of the Catchpoint test run, so a result that arrived hours ago is indistinguishable downstream from one that arrived seconds ago — nothing in the exposed data reveals that a test has stopped reporting.
+The exporter re-exports the last result of every test/node on each scrape, timestamped at scrape time rather than test-run time. Nothing in the exposed data shows that a test has stopped reporting, so without eviction a deleted test keeps exporting its final value forever.
 
-`--stale-timeout` bounds that. A test/node result stops being exported once this long has passed since its last webhook, so a test you delete in Catchpoint disappears from `/metrics` rather than freezing at its final value forever. The default is `24h`: long enough that a run of missed test executions never drops a live series, short enough that deleted tests retire within a day.
+`--stale-timeout` drops a result once that long has passed since its last webhook. Set it to a few multiples of your slowest test frequency — `90m` suits tests running every 15–30 minutes. Below that frequency, live series flap between runs.
 
-Set it lower if you want deleted or broken tests to disappear sooner — a few multiples of your slowest test frequency is the rule of thumb, so `--stale-timeout=90m` suits tests running every 15–30 minutes. **Never set it below your slowest test frequency**, or live series will flap in and out between runs.
+`--stale-timeout=0s` disables eviction and logs a warning at startup. Eviction happens during a scrape, so results still accumulate if nothing scrapes `/metrics`.
 
-`--stale-timeout=0s` disables eviction entirely and restores the pre-`24h` behaviour of keeping every result until the process restarts. The exporter logs a warning at startup when you do. Note that eviction happens during a scrape, so an exporter that receives webhooks while nothing scrapes `/metrics` accumulates results regardless of this setting.
+> **Changed in this release:** the default was previously `0s` (keep everything until restart) and is now `24h`. Tests that stopped reporting over a day ago will disappear from `/metrics` after upgrading. Set `--stale-timeout=0s` to restore the old behaviour.
 
 ## Webhook Setup
 
