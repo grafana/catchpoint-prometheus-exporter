@@ -14,16 +14,44 @@
 
 package collector
 
+import "time"
+
 type Config struct {
 	VerboseLogging bool
 	Port           string
 	WebhookPath    string
+
+	// StaleTimeout is how long a test/node result keeps being exported after its
+	// last webhook. Set it to a few multiples of the slowest test frequency, so a
+	// couple of missed runs do not drop a live series. Zero disables eviction,
+	// leaving deleted tests exporting their final value indefinitely.
+	StaleTimeout time.Duration
+
+	// MaxBodyBytes caps how much of a webhook body is read. Zero or less selects
+	// DefaultMaxBodyBytes.
+	MaxBodyBytes int64
+
+	// MaxSeries caps how many test/node combinations are held at once. Combinations
+	// already tracked keep updating; new ones are rejected. Zero selects
+	// DefaultMaxSeries, a negative value disables the limit.
+	MaxSeries int
 }
+
+// DefaultMaxSeries is far above any realistic Catchpoint account, so reaching it
+// means something is wrong rather than that the deployment has outgrown it.
+const DefaultMaxSeries = 10000
+
+// DefaultStaleTimeout is deliberately far longer than any realistic test
+// frequency: its job is to retire deleted tests, not to detect gaps in reporting.
+const DefaultStaleTimeout = 24 * time.Hour
 
 func NewConfig() *Config {
 	return &Config{
 		VerboseLogging: false,
 		Port:           "9090",
 		WebhookPath:    "/webhook",
+		StaleTimeout:   DefaultStaleTimeout,
+		MaxBodyBytes:   DefaultMaxBodyBytes,
+		MaxSeries:      DefaultMaxSeries,
 	}
 }
