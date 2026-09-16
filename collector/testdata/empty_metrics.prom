@@ -1,3 +1,15 @@
+# HELP catchpoint_series_dropped_total Total number of results dropped after reaching the series limit.
+# TYPE catchpoint_series_dropped_total counter
+catchpoint_series_dropped_total 0
+# HELP catchpoint_tracked_series Number of test/node combinations currently exported.
+# TYPE catchpoint_tracked_series gauge
+catchpoint_tracked_series 1
 # HELP catchpoint_up Catchpoint exporter is up and running.
 # TYPE catchpoint_up gauge
 catchpoint_up 1
+# HELP catchpoint_webhook_errors_total Total number of webhook requests that could not be processed.
+# TYPE catchpoint_webhook_errors_total counter
+catchpoint_webhook_errors_total 0
+# HELP catchpoint_webhook_requests_total Total number of webhook requests received from Catchpoint.
+# TYPE catchpoint_webhook_requests_total counter
+catchpoint_webhook_requests_total 1
